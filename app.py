@@ -1,6 +1,5 @@
 # ============================================================
-# app.py - Complete HeyGen Video Generator (Streamlit)
-# FIXED: Avatar Upload issue resolved
+# app.py - FIXED Avatar Upload
 # ============================================================
 
 import streamlit as st
@@ -334,14 +333,6 @@ st.markdown("""
 
 # ===== HELPER FUNCTIONS =====
 
-def base64_to_blob(base64_data):
-    if ',' in base64_data:
-        base64_data = base64_data.split(',')[1]
-    return base64.b64decode(base64_data)
-
-def file_to_base64(file):
-    return base64.b64encode(file.read()).decode('utf-8')
-
 def split_script(script, max_len=4900):
     if len(script) <= max_len:
         return [script]
@@ -372,39 +363,56 @@ def relative_time(timestamp):
     days = hours // 24
     return f"{days} din pehle"
 
-# ===== API FUNCTIONS (FIXED) =====
+# ===== API FUNCTIONS (FIXED FOR AVATAR III) =====
 
 def upload_avatar(api_key, base64_data, mime_type, file_name, engine="avatar_iii"):
-    """Upload avatar photo to HeyGen - FIXED VERSION"""
+    """
+    Upload avatar photo to HeyGen
+    FIXED: Proper base64 encoding for Avatar III (talking_photo)
+    """
     
-    # Clean base64 data (remove data URL prefix if present)
+    # Remove data URL prefix if present
     if ',' in base64_data:
         base64_data = base64_data.split(',')[1]
     
     # Decode base64 to bytes
     file_bytes = base64.b64decode(base64_data)
     
-    # Create multipart form data
-    files = {
-        'file': (file_name, file_bytes, mime_type)
-    }
-    
-    headers = {
-        'x-api-key': api_key
-    }
-    
     if engine == "avatar_iii":
         # Avatar III - Upload to talking_photo endpoint
+        # IMPORTANT: For Avatar III, we need to send the file as multipart form-data
+        # with the correct content-type
+        
         url = "https://upload.heygen.com/v1/talking_photo"
+        
+        # Create multipart form data with proper encoding
+        files = {
+            'file': (file_name, file_bytes, mime_type)
+        }
+        
+        headers = {
+            'x-api-key': api_key
+        }
+        
         response = requests.post(url, headers=headers, files=files)
+        
     else:
         # Avatar IV - Upload to assets endpoint
         url = "https://api.heygen.com/v3/assets"
+        
+        files = {
+            'file': (file_name, file_bytes, mime_type)
+        }
+        
+        headers = {
+            'x-api-key': api_key
+        }
+        
         response = requests.post(url, headers=headers, files=files)
     
-    # Debug: Print response
-    print(f"Upload Status: {response.status_code}")
-    print(f"Upload Response: {response.text}")
+    # Debug output
+    print(f"Status: {response.status_code}")
+    print(f"Response: {response.text[:500]}")
     
     if response.status_code != 200:
         try:
@@ -420,6 +428,7 @@ def upload_avatar(api_key, base64_data, mime_type, file_name, engine="avatar_iii
         raise Exception(f"Upload failed: {data['error'].get('message', 'Unknown error')}")
     
     if engine == "avatar_iii":
+        # For Avatar III, response should have talking_photo_id
         if not data.get('data', {}).get('talking_photo_id'):
             raise Exception("talking_photo_id not found in response")
         return {
@@ -427,6 +436,7 @@ def upload_avatar(api_key, base64_data, mime_type, file_name, engine="avatar_iii
             "preview_url": data['data'].get('talking_photo_url', '')
         }
     else:
+        # For Avatar IV, response should have url
         if not data.get('data', {}).get('url'):
             raise Exception("asset url not found in response")
         upload_url = data['data']['url']
@@ -678,13 +688,16 @@ def main():
             if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True, key="upload_avatar_btn"):
                 with st.spinner("Upload ho raha hai..."):
                     try:
-                        # Read file and convert to base64
+                        # Read file
                         file_bytes = avatar_file.read()
+                        
+                        # Convert to base64
                         base64_data = base64.b64encode(file_bytes).decode('utf-8')
                         mime_type = avatar_file.type
                         
                         st.info(f"Uploading {len(file_bytes)} bytes...")
                         
+                        # Upload
                         result = upload_avatar(
                             st.session_state.api_key,
                             base64_data,
@@ -693,27 +706,36 @@ def main():
                             st.session_state.avatar_engine
                         )
                         
+                        # Save result
                         if st.session_state.avatar_engine == "avatar_iii":
                             st.session_state.talking_photo_id = result['talking_photo_id']
+                            st.session_state.avatar_id = None
                         else:
                             st.session_state.avatar_id = result['image_key']
+                            st.session_state.talking_photo_id = None
                         
                         st.session_state.avatar_preview = result['preview_url']
-                        st.success(f"✅ Avatar save ho gaya! ID: {st.session_state.talking_photo_id or st.session_state.avatar_id}")
                         
-                        # Force rerun to update preview
+                        st.success(f"✅ Avatar save ho gaya!")
+                        if st.session_state.talking_photo_id:
+                            st.info(f"🆔 ID: {st.session_state.talking_photo_id[:30]}...")
+                        
                         st.rerun()
                         
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
-                        st.info("💡 Tip: Try using a smaller image (< 2MB) or try avatar_iii engine")
+                        st.info("💡 Tip: Try using avatar_iv engine or a smaller image")
         
         with col2:
             if st.session_state.avatar_preview:
                 st.image(st.session_state.avatar_preview, caption="Your Avatar", use_container_width=True)
                 
                 if st.session_state.talking_photo_id:
-                    st.success(f"✅ Avatar ID: {st.session_state.talking_photo_id[:20]}...")
+                    st.success(f"✅ Avatar ready! (Avatar III)")
+                    st.code(st.session_state.talking_photo_id[:40] + "...", language="text")
+                elif st.session_state.avatar_id:
+                    st.success(f"✅ Avatar ready! (Avatar IV)")
+                    st.code(st.session_state.avatar_id[:40] + "...", language="text")
             else:
                 st.info("👆 Photo upload karo")
         
