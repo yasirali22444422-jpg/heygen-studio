@@ -1,8 +1,6 @@
 # ============================================================
 # app.py - Complete HeyGen Video Generator (Streamlit)
-# Full conversion from Chrome Extension to Web App
-# All features: Avatar Upload, Voice Clone, Video Generate,
-# Agent Video, Render Scene, Video History
+# FIXED: Avatar Upload issue resolved
 # ============================================================
 
 import streamlit as st
@@ -57,7 +55,6 @@ if 'custom_avatar_look_id' not in st.session_state:
 # ===== CUSTOM CSS =====
 st.markdown("""
 <style>
-    /* Main container */
     .main-container {
         background: #0f0f14;
         color: #eaeaf0;
@@ -65,8 +62,6 @@ st.markdown("""
         border-radius: 12px;
         min-height: 600px;
     }
-    
-    /* Header */
     .app-header {
         display: flex;
         align-items: center;
@@ -87,8 +82,6 @@ st.markdown("""
         margin: 0;
         color: #eaeaf0;
     }
-    
-    /* Status cards */
     .status-card {
         background: #1c1c26;
         border: 1px solid #2c2c3a;
@@ -106,8 +99,6 @@ st.markdown("""
     .status-card.warning {
         border-left-color: #fbbf24;
     }
-    
-    /* Buttons */
     .stButton > button {
         background: linear-gradient(135deg, #7c3aed, #ec4899) !important;
         color: white !important;
@@ -126,8 +117,6 @@ st.markdown("""
         opacity: 0.5 !important;
         cursor: not-allowed !important;
     }
-    
-    /* Inputs */
     .stTextInput > div > div > input,
     .stTextArea > div > div > textarea,
     .stSelectbox > div > div > select {
@@ -140,8 +129,6 @@ st.markdown("""
     .stTextArea > div > div > textarea:focus {
         border-color: #7c3aed !important;
     }
-    
-    /* Success/Error messages */
     .success-text {
         color: #4ade80;
         font-weight: 600;
@@ -160,16 +147,12 @@ st.markdown("""
         color: #8b8b9a;
         font-size: 12px;
     }
-    
-    /* Video container */
     .video-container {
         background: #0d0d1a;
         border-radius: 12px;
         padding: 15px;
         border: 1px solid #2a2a4a;
     }
-    
-    /* Avatar grid */
     .avatar-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -208,8 +191,6 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    
-    /* Voice list */
     .voice-list {
         max-height: 300px;
         overflow-y: auto;
@@ -242,8 +223,6 @@ st.markdown("""
         font-size: 11px;
         color: #8b8b9a;
     }
-    
-    /* History grid */
     .history-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -312,8 +291,6 @@ st.markdown("""
         background: #2a2a0a;
         color: #fbbf24;
     }
-    
-    /* Summary box */
     .summary-box {
         background: #1c1c26;
         border: 1px solid #2c2c3a;
@@ -342,8 +319,6 @@ st.markdown("""
     .summary-box .row .value.missing {
         color: #f87171;
     }
-    
-    /* Scrollbar */
     ::-webkit-scrollbar {
         width: 6px;
     }
@@ -360,17 +335,14 @@ st.markdown("""
 # ===== HELPER FUNCTIONS =====
 
 def base64_to_blob(base64_data):
-    """Convert base64 to bytes"""
     if ',' in base64_data:
         base64_data = base64_data.split(',')[1]
     return base64.b64decode(base64_data)
 
 def file_to_base64(file):
-    """Convert uploaded file to base64"""
     return base64.b64encode(file.read()).decode('utf-8')
 
 def split_script(script, max_len=4900):
-    """Split long script into chunks"""
     if len(script) <= max_len:
         return [script]
     chunks = []
@@ -388,7 +360,6 @@ def split_script(script, max_len=4900):
     return chunks
 
 def relative_time(timestamp):
-    """Convert timestamp to relative time"""
     diff = int(time.time() * 1000) - timestamp
     minutes = diff // 60000
     if minutes < 1:
@@ -401,66 +372,72 @@ def relative_time(timestamp):
     days = hours // 24
     return f"{days} din pehle"
 
-# ===== API FUNCTIONS =====
-
-def heygen_request(method, endpoint, api_key, data=None, files=None):
-    """Make HeyGen API request"""
-    url = f"https://api.heygen.com{endpoint}"
-    headers = {"x-api-key": api_key}
-    
-    if files:
-        response = requests.post(url, headers=headers, files=files)
-    elif data:
-        headers["Content-Type"] = "application/json"
-        response = requests.request(method, url, headers=headers, json=data)
-    else:
-        response = requests.request(method, url, headers=headers)
-    
-    return response.json()
+# ===== API FUNCTIONS (FIXED) =====
 
 def upload_avatar(api_key, base64_data, mime_type, file_name, engine="avatar_iii"):
-    """Upload avatar photo to HeyGen"""
-    # Convert base64 to bytes
+    """Upload avatar photo to HeyGen - FIXED VERSION"""
+    
+    # Clean base64 data (remove data URL prefix if present)
     if ',' in base64_data:
         base64_data = base64_data.split(',')[1]
+    
+    # Decode base64 to bytes
     file_bytes = base64.b64decode(base64_data)
+    
+    # Create multipart form data
+    files = {
+        'file': (file_name, file_bytes, mime_type)
+    }
+    
+    headers = {
+        'x-api-key': api_key
+    }
     
     if engine == "avatar_iii":
         # Avatar III - Upload to talking_photo endpoint
-        files = {"file": (file_name, file_bytes, mime_type)}
-        response = requests.post(
-            "https://upload.heygen.com/v1/talking_photo",
-            headers={"x-api-key": api_key},
-            files=files
-        )
-        data = response.json()
-        if response.status_code != 200 or data.get('error'):
-            raise Exception(data.get('error', {}).get('message', 'Upload failed'))
-        return {
-            "talking_photo_id": data['data']['talking_photo_id'],
-            "preview_url": data['data']['talking_photo_url']
-        }
+        url = "https://upload.heygen.com/v1/talking_photo"
+        response = requests.post(url, headers=headers, files=files)
     else:
         # Avatar IV - Upload to assets endpoint
-        files = {"file": (file_name, file_bytes, mime_type)}
-        response = requests.post(
-            "https://api.heygen.com/v3/assets",
-            headers={"x-api-key": api_key},
-            files=files
-        )
-        data = response.json()
-        if response.status_code != 200 or data.get('error'):
-            raise Exception(data.get('error', {}).get('message', 'Upload failed'))
+        url = "https://api.heygen.com/v3/assets"
+        response = requests.post(url, headers=headers, files=files)
+    
+    # Debug: Print response
+    print(f"Upload Status: {response.status_code}")
+    print(f"Upload Response: {response.text}")
+    
+    if response.status_code != 200:
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', response.text)
+        except:
+            error_msg = response.text
+        raise Exception(f"Upload failed: {error_msg}")
+    
+    data = response.json()
+    
+    if data.get('error'):
+        raise Exception(f"Upload failed: {data['error'].get('message', 'Unknown error')}")
+    
+    if engine == "avatar_iii":
+        if not data.get('data', {}).get('talking_photo_id'):
+            raise Exception("talking_photo_id not found in response")
+        return {
+            "talking_photo_id": data['data']['talking_photo_id'],
+            "preview_url": data['data'].get('talking_photo_url', '')
+        }
+    else:
+        if not data.get('data', {}).get('url'):
+            raise Exception("asset url not found in response")
         upload_url = data['data']['url']
         image_key = upload_url.split('/')[-1]
         return {
             "image_key": image_key,
             "preview_url": upload_url,
-            "asset_id": data['data']['asset_id']
+            "asset_id": data['data'].get('asset_id', '')
         }
 
 def clone_voice(api_key, base64_data, mime_type, file_name, name):
-    """Clone voice using HeyGen API"""
     if ',' in base64_data:
         base64_data = base64_data.split(',')[1]
     file_bytes = base64.b64decode(base64_data)
@@ -482,7 +459,6 @@ def clone_voice(api_key, base64_data, mime_type, file_name, name):
     }
 
 def list_avatars(api_key):
-    """Get list of avatars"""
     response = requests.get(
         "https://api.heygen.com/v2/avatars",
         headers={"x-api-key": api_key}
@@ -493,7 +469,6 @@ def list_avatars(api_key):
     return data['data']['avatars']
 
 def list_voices(api_key):
-    """Get list of voices"""
     response = requests.get(
         "https://api.heygen.com/v3/voices",
         headers={"x-api-key": api_key}
@@ -504,7 +479,6 @@ def list_voices(api_key):
     return data['data']['voices'] if isinstance(data['data'], list) else data['data'].get('voices', [])
 
 def generate_video(api_key, talking_photo_id, voice_id, script, title, orientation="landscape", is_test=False):
-    """Generate video using talking photo"""
     chunks = split_script(script, 4900)
     dimension = {"width": 1280, "height": 720} if orientation == "landscape" else {"width": 720, "height": 1280}
     
@@ -541,7 +515,6 @@ def generate_video(api_key, talking_photo_id, voice_id, script, title, orientati
     return data['data']['video_id']
 
 def check_video_status(api_key, video_id):
-    """Check video generation status"""
     response = requests.get(
         f"https://api.heygen.com/v1/video_status.get?video_id={video_id}",
         headers={"x-api-key": api_key}
@@ -552,7 +525,6 @@ def check_video_status(api_key, video_id):
     return data['data']
 
 def generate_agent_video(api_key, prompt, voice_id, avatar_id, orientation="landscape"):
-    """Generate video using HeyGen Video Agent"""
     dimension = {"width": 1280, "height": 720} if orientation == "landscape" else {"width": 720, "height": 1280}
     
     payload = {
@@ -574,7 +546,6 @@ def generate_agent_video(api_key, prompt, voice_id, avatar_id, orientation="land
     return data['data']['session_id']
 
 def check_agent_status(api_key, session_id):
-    """Check agent session status"""
     response = requests.get(
         f"https://api.heygen.com/v3/video-agents/{session_id}",
         headers={"x-api-key": api_key}
@@ -587,7 +558,6 @@ def check_agent_status(api_key, session_id):
 # ===== UI COMPONENTS =====
 
 def render_header():
-    """Render app header"""
     st.markdown("""
     <div class="app-header">
         <div class="logo-dot"></div>
@@ -595,7 +565,6 @@ def render_header():
     </div>
     """, unsafe_allow_html=True)
     
-    # API Key status
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         st.text_input("🔑 API Key", value=st.session_state.api_key, 
@@ -612,7 +581,6 @@ def render_header():
         """, unsafe_allow_html=True)
 
 def render_summary():
-    """Render avatar and voice summary"""
     avatar_ready = bool(st.session_state.talking_photo_id)
     voice_ready = bool(st.session_state.voice_id)
     
@@ -634,7 +602,6 @@ def render_summary():
     """, unsafe_allow_html=True)
 
 def render_video_history():
-    """Render video history"""
     st.markdown("### 📹 Meri Videos")
     
     if not st.session_state.video_history:
@@ -672,10 +639,8 @@ def render_video_history():
 def main():
     render_header()
     
-    # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🔑 Settings", "👤 Avatar", "🎤 Voice", "🎬 Video Banao"])
     
-    # ===== TAB 1: SETTINGS =====
     with tab1:
         st.markdown("""
         <div class="status-card success">
@@ -691,14 +656,12 @@ def main():
         - All features unlocked
         """)
     
-    # ===== TAB 2: AVATAR =====
     with tab2:
         st.markdown("### 📸 Apna Avatar Upload Karo")
         
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            # Avatar upload
             avatar_file = st.file_uploader(
                 "Photo select karo (clear, front-facing)",
                 type=['png', 'jpg', 'jpeg'],
@@ -712,11 +675,15 @@ def main():
             )
             st.session_state.avatar_engine = "avatar_iii" if "avatar_iii" in engine else "avatar_iv"
             
-            if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True):
+            if avatar_file and st.button("📤 Upload & Save Avatar", use_container_width=True, key="upload_avatar_btn"):
                 with st.spinner("Upload ho raha hai..."):
                     try:
-                        base64_data = base64.b64encode(avatar_file.read()).decode('utf-8')
+                        # Read file and convert to base64
+                        file_bytes = avatar_file.read()
+                        base64_data = base64.b64encode(file_bytes).decode('utf-8')
                         mime_type = avatar_file.type
+                        
+                        st.info(f"Uploading {len(file_bytes)} bytes...")
                         
                         result = upload_avatar(
                             st.session_state.api_key,
@@ -732,18 +699,24 @@ def main():
                             st.session_state.avatar_id = result['image_key']
                         
                         st.session_state.avatar_preview = result['preview_url']
-                        st.success("✅ Avatar save ho gaya!")
+                        st.success(f"✅ Avatar save ho gaya! ID: {st.session_state.talking_photo_id or st.session_state.avatar_id}")
+                        
+                        # Force rerun to update preview
+                        st.rerun()
                         
                     except Exception as e:
-                        st.error(f"Error: {str(e)}")
+                        st.error(f"❌ Error: {str(e)}")
+                        st.info("💡 Tip: Try using a smaller image (< 2MB) or try avatar_iii engine")
         
         with col2:
             if st.session_state.avatar_preview:
                 st.image(st.session_state.avatar_preview, caption="Your Avatar", use_container_width=True)
+                
+                if st.session_state.talking_photo_id:
+                    st.success(f"✅ Avatar ID: {st.session_state.talking_photo_id[:20]}...")
             else:
                 st.info("👆 Photo upload karo")
         
-        # Avatar list
         st.markdown("---")
         st.markdown("### 🎭 HeyGen Avatars")
         
@@ -772,7 +745,6 @@ def main():
                         st.session_state.selected_avatar_id = av['avatar_id']
                         st.success(f"✅ {av.get('avatar_name', 'Avatar')} selected!")
 
-    # ===== TAB 3: VOICE =====
     with tab3:
         st.markdown("### 🎤 Voice Select Karo")
         
@@ -854,7 +826,6 @@ def main():
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
     
-    # ===== TAB 4: VIDEO BANAO =====
     with tab4:
         st.markdown("### 🎬 Video Banao")
         
@@ -892,7 +863,7 @@ def main():
             with col2:
                 title = st.text_input("Video Title (optional)", placeholder="Video ka naam")
             
-            if st.button("🎬 Render Karo", use_container_width=True):
+            if st.button("🎬 Render Karo", use_container_width=True, key="render_btn"):
                 if not st.session_state.talking_photo_id:
                     st.error("❌ Pehle Avatar tab se photo upload karo!")
                 elif not st.session_state.voice_id:
@@ -912,7 +883,6 @@ def main():
                                 False
                             )
                             
-                            # Add to history
                             st.session_state.video_history.insert(0, {
                                 'id': video_id,
                                 'title': title or script[:60],
@@ -923,7 +893,6 @@ def main():
                             
                             st.success(f"✅ Video generate ho rahi hai! ID: {video_id}")
                             
-                            # Poll for status
                             with st.spinner("Video render ho rahi hai... (1-3 minute)"):
                                 for _ in range(30):
                                     time.sleep(10)
@@ -972,7 +941,7 @@ def main():
             with col2:
                 agent_title = st.text_input("Video Title (optional)", placeholder="Video ka naam", key="agent_title")
             
-            if st.button("🤖 Agent Video Banao", use_container_width=True):
+            if st.button("🤖 Agent Video Banao", use_container_width=True, key="agent_btn"):
                 if not st.session_state.talking_photo_id:
                     st.error("❌ Pehle Avatar tab se photo upload karo!")
                 elif not st.session_state.voice_id:
@@ -990,7 +959,6 @@ def main():
                                 "landscape" if "landscape" in agent_orientation else "portrait"
                             )
                             
-                            # Add to history
                             st.session_state.video_history.insert(0, {
                                 'id': session_id,
                                 'title': agent_title or prompt[:60],
@@ -1002,7 +970,6 @@ def main():
                             
                             st.success(f"✅ Agent video shuru ho gayi! Session: {session_id}")
                             
-                            # Poll for status
                             with st.spinner("Video render ho rahi hai... (2-3 minute)"):
                                 for _ in range(40):
                                     time.sleep(10)
@@ -1015,7 +982,6 @@ def main():
                                     
                                     if status_data.get('video_id'):
                                         video_id = status_data['video_id']
-                                        # Check video status
                                         video_status = check_video_status(st.session_state.api_key, video_id)
                                         if video_status.get('status') == 'completed':
                                             video_url = video_status.get('video_url')
@@ -1036,7 +1002,6 @@ def main():
                             if st.session_state.video_history:
                                 st.session_state.video_history[0]['status'] = 'error'
         
-        # Video History
         st.markdown("---")
         render_video_history()
         
